@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+html { scroll-behavior: smooth; }
+body { @apply bg-ink text-white font-sans antialiased; }
+@layer components {
+  .btn-gold { @apply inline-block bg-gold text-black font-semibold px-7 py-3 rounded-full transition hover:bg-gold-light hover:scale-105 active:scale-95; }
+  .btn-line { @apply inline-block border border-gold text-gold px-7 py-3 rounded-full transition hover:bg-gold hover:text-black; }
+  .input { @apply w-full bg-white/5 border border-white/15 rounded-lg px-4 py-3 outline-none focus:border-gold transition; }
+  .h2 { @apply font-serif text-3xl sm:text-4xl md:text-5xl font-semibold; }
+}
+.reveal { opacity: 0; transform: translateY(30px); transition: all .8s cubic-bezier(.2,.7,.2,1); }
+.reveal.show { opacity: 1; transform: none; }
+@keyframes kb { from { transform: scale(1); } to { transform: scale(1.12); } }
+.kb { animation: kb 18s ease-in-out infinite alternate; }
