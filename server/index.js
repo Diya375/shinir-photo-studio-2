@@ -47,6 +47,7 @@ const DUMMY = bcrypt.hashSync('x', 10)
 // ---------- Helpers ----------
 const app = express()
 app.disable('x-powered-by')
+app.set('trust proxy', 1) // needed behind Render / Nginx / Cloudflare so rate limits work per visitor
 app.use((q, s, n) => { s.set({ 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'same-origin' }); n() })
 app.use(express.json({ limit: '20kb' }))
 const hits = new Map()
@@ -161,6 +162,7 @@ app.use('/api/admin', admin)
 app.use('/api', (q, s) => s.status(404).json({ error: 'Not found' }))
 
 // ---------- Serve built frontend in production ----------
-if (fs.existsSync('dist')) { app.use(express.static('dist')); app.get('*', (q, s) => s.sendFile(path.resolve('dist/index.html'))) }
+const dist = path.join(rootDir, 'dist')
+if (fs.existsSync(dist)) { app.use(express.static(dist)); app.use((q, s) => s.sendFile(path.join(dist, 'index.html'))) }
 app.use((err, q, s, n) => { if (err.type === 'entity.parse.failed') return s.status(400).json({ error: 'Invalid request' }); console.error(err); s.status(500).json({ error: 'Server error. Please try again.' }) })
 app.listen(PORT, () => console.log(`API running on http://localhost:${PORT}`))
