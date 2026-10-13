@@ -27,6 +27,13 @@ export function Booking({ services, packages }) {
   const [done, setDone] = useState(null)
   const set = (k) => (e) => { setF({ ...f, [k]: e.target.value }); setErr({ ...err, [k]: '' }) }
 
+  // "Book This" button on a pricing card pre-selects its package
+  useEffect(() => {
+    const h = (e) => setF((p) => ({ ...p, package: e.detail }))
+    window.addEventListener('pick-package', h)
+    return () => window.removeEventListener('pick-package', h)
+  }, [])
+
   const loadSlots = (date) => {
     setSlots(null); setSlotMsg('')
     if (!date) return
