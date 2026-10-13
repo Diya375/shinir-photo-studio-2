@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, t12 } from './api'
+import { BUSINESS as B } from './data'
 
 const BADGE = { pending: 'bg-yellow-500/20 text-yellow-300', approved: 'bg-green-500/20 text-green-300', rejected: 'bg-red-500/20 text-red-300', cancelled: 'bg-zinc-500/30 text-zinc-300', completed: 'bg-blue-500/20 text-blue-300' }
 const ACTIONS = { pending: [['approved', 'Approve'], ['rejected', 'Reject'], ['cancelled', 'Cancel']], approved: [['completed', 'Mark Completed'], ['cancelled', 'Cancel']] }
@@ -25,31 +26,92 @@ function Login({ onLogin }) {
   )
 }
 
+const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Kathmandu' })
+const waNum = (p) => { const d = String(p).replace(/\D/g, '').replace(/^0+/, ''); return d.length <= 10 ? '977' + d : d }
+const WA_TEXT = {
+  pending: (b) => `Hello ${b.name}, we received your booking ${b.ref} for ${b.service} on ${b.date} at ${t12(b.time)}. We will confirm shortly. – ${B.name}`,
+  approved: (b) => `Hello ${b.name}, your booking ${b.ref} is CONFIRMED: ${b.service} on ${b.date} at ${t12(b.time)}. See you at the studio! – ${B.name}`,
+  rejected: (b) => `Hello ${b.name}, sorry, we could not accept booking ${b.ref} for ${b.date} at ${t12(b.time)}. Please choose another time. – ${B.name}`,
+  cancelled: (b) => `Hello ${b.name}, your booking ${b.ref} on ${b.date} at ${t12(b.time)} has been cancelled. – ${B.name}`,
+  completed: (b) => `Hello ${b.name}, thank you for visiting ${B.name}! We hope you loved the results.`,
+}
+
 function Bookings() {
-  const [rows, setRows] = useState(null), [st, setSt] = useState(''), [err, setErr] = useState(''), [busy, setBusy] = useState(0)
-  const load = () => api('/admin/bookings' + (st ? '?status=' + st : '')).then(setRows).catch((e) => setErr(e.message))
-  useEffect(() => { setRows(null); load() }, [st])
+  const [all, setAll] = useState(null), [st, setSt] = useState('pending'), [q, setQ] = useState(''), [day, setDay] = useState('')
+  const [err, setErr] = useState(''), [busy, setBusy] = useState(0)
+  const load = () => api('/admin/bookings').then(setAll).catch((e) => setErr(e.message))
+  useEffect(() => { load(); const i = setInterval(load, 30000); return () => clearInterval(i) }, [])
   const act = async (b, status) => {
     if (['rejected', 'cancelled'].includes(status) && !confirm(`${status === 'rejected' ? 'Reject' : 'Cancel'} booking ${b.ref}?`)) return
     setBusy(b.id); setErr('')
     try { await api(`/admin/bookings/${b.id}/status`, { method: 'PATCH', body: { status } }); await load() } catch (e) { setErr(e.message) } finally { setBusy(0) }
   }
+  if (!all) return <p className="text-white/50">{err || 'Loading…'}</p>
+
+  const T = today(), needle = q.trim().toLowerCase()
+  const n = (f) => all.filter(f).length
+  const stats = [
+    ['Pending', n((b) => b.status === 'pending'), 'pending', 'text-yellow-300'],
+    ['Today', n((b) => b.date === T && ['pending', 'approved'].includes(b.status)), 'today', 'text-gold'],
+    ['Upcoming', n((b) => b.status === 'approved' && b.date >= T), 'approved', 'text-green-300'],
+    ['To complete', n((b) => b.status === 'approved' && b.date < T), 'overdue', 'text-red-300'],
+  ]
+  const rank = (b) => (b.status === 'pending' ? 0 : b.status === 'approved' && b.date >= T ? 1 : 2)
+  const rows = all
+    .filter((b) => (st === 'today' ? b.date === T && ['pending', 'approved'].includes(b.status) : st === 'overdue' ? b.status === 'approved' && b.date < T : !st || b.status === st))
+    .filter((b) => !day || b.date === day)
+    .filter((b) => !needle || [b.name, b.phone, b.ref, b.email].some((x) => (x || '').toLowerCase().includes(needle)))
+    .sort((a, b) => rank(a) - rank(b) || (rank(a) < 2 ? (a.date + a.time).localeCompare(b.date + b.time) : (b.date + b.time).localeCompare(a.date + a.time)))
+
+  const exportCsv = () => {
+    const cols = ['ref', 'name', 'phone', 'email', 'service', 'package', 'date', 'time', 'status', 'message']
+    const esc = (v) => { let s = String(v ?? ''); if (/^[=+\-@]/.test(s)) s = "'" + s; return `"${s.replace(/"/g, '""')}"` }
+    const csv = [cols.join(','), ...rows.map((b) => cols.map((c) => esc(b[c])).join(','))].join('\n')
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = `bookings-${T}.csv`; a.click()
+  }
+
   return (
     <div>
-      <div className="flex gap-2 flex-wrap mb-4">{['', 'pending', 'approved', 'completed', 'rejected', 'cancelled'].map((s) => <Tab key={s} a={st === s} onClick={() => setSt(s)}>{s || 'All'}</Tab>)}</div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+        {stats.map(([l, v, k, c]) => (
+          <button key={l} onClick={() => setSt(k)} className={`text-left border rounded-xl p-4 transition ${st === k ? 'border-gold bg-gold/10' : 'border-white/10 hover:border-gold'}`}>
+            <div className={`font-serif text-3xl ${c}`}>{v}</div><div className="text-xs text-white/60 mt-1">{l}</div>
+          </button>
+        ))}
+      </div>
+      <div className="flex gap-2 flex-wrap mb-4">
+        {['', 'pending', 'approved', 'completed', 'rejected', 'cancelled'].map((s) => <Tab key={s} a={st === s} onClick={() => setSt(s)}>{s || 'All'} ({s ? n((b) => b.status === s) : all.length})</Tab>)}
+      </div>
+      <div className="flex gap-3 flex-wrap mb-4">
+        <input placeholder="Search name, phone or ref…" className="input !py-2 flex-1 min-w-48" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input type="date" className="input !py-2 !w-auto [color-scheme:dark]" value={day} onChange={(e) => setDay(e.target.value)} />
+        {(day || q) && <button className="text-sm text-white/60 underline" onClick={() => { setDay(''); setQ('') }}>Clear</button>}
+        <button className="btn-line !py-2 !px-4 text-sm" onClick={exportCsv} disabled={!rows.length}>Export CSV</button>
+      </div>
       {err && <p className="text-red-400 text-sm mb-3">{err}</p>}
-      {!rows ? <p className="text-white/50">Loading…</p> : !rows.length ? <p className="text-white/50">No bookings found.</p> : rows.map((b) => (
-        <div key={b.id} className="border border-white/10 rounded-xl p-4 mb-3 grid sm:grid-cols-[1fr_auto] gap-3">
-          <div className="text-sm space-y-1">
-            <p className="font-semibold text-gold">{b.name} <span className="text-white/40 font-normal">· {b.ref}</span> <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${BADGE[b.status]}`}>{b.status}</span></p>
-            <p>📞 <a href={'tel:' + b.phone}>{b.phone}</a> {b.email && <>· ✉️ {b.email}</>}</p>
-            <p>📸 {b.service}{b.package && ` — ${b.package}`}</p>
-            <p>📅 {b.date} · ⏰ {t12(b.time)}</p>
-            {b.message && <p className="text-white/60">“{b.message}”</p>}
+      {!rows.length ? <p className="text-white/50">{st === 'pending' && !q && !day ? 'No pending bookings. You are all caught up ✓' : 'No bookings found.'}</p> : rows.map((b) => {
+        const isToday = b.date === T && ['pending', 'approved'].includes(b.status)
+        const overdue = b.status === 'approved' && b.date < T
+        return (
+          <div key={b.id} className={`border rounded-xl p-4 mb-3 grid sm:grid-cols-[1fr_auto] gap-3 ${b.status === 'pending' ? 'border-yellow-500/40' : 'border-white/10'}`}>
+            <div className="text-sm space-y-1">
+              <p className="font-semibold text-gold">{b.name} <span className="text-white/40 font-normal">· {b.ref}</span> <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${BADGE[b.status]}`}>{b.status}</span>
+                {isToday && <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-gold text-black">TODAY</span>}
+                {overdue && <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-red-500/30 text-red-200">Date passed – mark completed?</span>}
+              </p>
+              <p>📞 <a href={'tel:' + b.phone}>{b.phone}</a> {b.email && <>· ✉️ <a href={'mailto:' + b.email}>{b.email}</a></>}</p>
+              <p>📸 {b.service}{b.package && ` — ${b.package}`}</p>
+              <p>📅 {b.date} · ⏰ {t12(b.time)}</p>
+              {b.message && <p className="text-white/60">“{b.message}”</p>}
+              <p className="text-white/30 text-xs">Requested {b.created_at}</p>
+            </div>
+            <div className="flex sm:flex-col gap-2 flex-wrap">
+              {(ACTIONS[b.status] || []).map(([s, l]) => <button key={s} disabled={busy === b.id} onClick={() => act(b, s)} className="btn-line !py-1 !px-4 text-xs disabled:opacity-50">{l}</button>)}
+              <a target="_blank" rel="noreferrer" href={`https://wa.me/${waNum(b.phone)}?text=${encodeURIComponent(WA_TEXT[b.status](b))}`} className="btn-gold !py-1 !px-4 text-xs text-center">WhatsApp</a>
+            </div>
           </div>
-          <div className="flex sm:flex-col gap-2 flex-wrap">{(ACTIONS[b.status] || []).map(([s, l]) => <button key={s} disabled={busy === b.id} onClick={() => act(b, s)} className="btn-line !py-1 !px-4 text-xs disabled:opacity-50">{l}</button>)}</div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
