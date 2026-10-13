@@ -116,7 +116,9 @@ export function Pricing({ packages }) {
               <h3 className="font-serif text-2xl">{p.name}</h3>
               <p className="text-gold text-3xl font-serif my-4">{p.price}</p>
               <ul className="space-y-2 text-sm text-white/70 flex-1 mb-6">{p.features.map((f) => <li key={f}>✓ {f}</li>)}</ul>
-              <a href={'#booking?pkg=' + encodeURIComponent(p.name)} onClick={() => sessionStorage.setItem('pkg', p.name)} className={p.featured ? 'btn-gold text-center' : 'btn-line text-center'}>Book This</a>
+              <a href="#booking"
+                onClick={() => { sessionStorage.setItem('pkg', p.name); window.dispatchEvent(new CustomEvent('pick-package', { detail: p.name })) }}
+                className={p.featured ? 'btn-gold text-center' : 'btn-line text-center'}>Book This</a>
             </div>
           </Reveal>
         ))}
